@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>CRM Kanban Provisório</title>
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+        }
+        .container {
+            display: flex;
+            justify-content: space-around;
+            margin-top: 20px;
+        }
+        .sidebar {
+            width: 15%;
+            border-right: 1px solid #ccc;
+            padding: 10px;
+            background-color: #f8f9fa;
+        }
+        .sidebar h2 {
+            text-align: center;
+            background-color: #007bff;
+            color: white;
+            padding: 10px;
+        }
+        .funil-list {
+            margin: 20px 0;
+        }
+        .funil-list a {
+            display: block;
+            margin: 10px 0;
+            text-decoration: none;
+            color: #007bff;
+            font-weight: bold;
+            cursor: pointer;
+        }
+        .kanban-board {
+            width: 80%;
+            padding: 20px;
+        }
+        .funil {
+            width: 30%;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            margin: 10px;
+            padding: 10px;
+            background-color: #f5f5f5;
+            float: left;
+        }
+        .funil h2 {
+            text-align: center;
+            background-color: #28a745;
+            color: white;
+            padding: 10px;
+        }
+        .etapa {
+            margin-top: 10px;
+            min-height: 50px;
+        }
+        .etapa h3 {
+            text-align: center;
+            background-color: #007bff;
+            color: white;
+            padding: 5px;
+        }
+        .cliente {
+            background-color: #ffffff;
+            border: 1px solid #ddd;
+            padding: 10px;
+            margin: 5px 0;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        .cliente.dragging {
+            opacity: 0.5;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="sidebar">
+            <h2>Selecione o Funil</h2>
+            <div class="funil-list">
+                <a href="#" data-funil="SMART POS - PIPE + TYPE">SMART POS - PIPE + TYPE</a>
+                <a href="#" data-funil="TAP TO PHONE">TAP TO PHONE</a>
+                <a href="#" data-funil="LEADS VENDAS KOMMO">LEADS VENDAS KOMMO</a>
+            </div>
+        </div>
+        <div class="kanban-board" id="kanban-board">
+        </div>
+    </div>
+
+    <div class="modal" id="clienteModal">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h4 class="modal-title">Detalhes do Cliente</h4>
+                    <button type="button" class="close" data-dismiss="modal">&times;</button>
+                </div>
+                <div class="modal-body" id="detalhes-body">
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-dismiss="modal">Fechar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
+    <script src="https://maxcdn.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
+    <script>
+        $(document).ready(function() {
+            carregarFunil('SMART POS - PIPE + TYPE');
+
+            function carregarFunil(funil_name) {
+                $.getJSON('/funil/' + funil_name, function(data) {
+                    var content = '<h2>Funil: ' + funil_name + '</h2>';
+                    for (var etapa in data) {
+                        content += '<div class="funil"><h3>' + etapa + '</h3>';
+                        content += '<div class="etapa" data-etapa="' + etapa + '">';
+                        data[etapa].forEach(function(cliente) {
+                            content += '<div class="cliente" data-id="' + cliente['ID'] + '" draggable="true">';
+                            content += '<p><strong>ID:</strong> ' + cliente['ID'] + '</p>';
+                            content += '<p><strong>Nome:</strong> ' + cliente['Nome'] + '</p>';  // Chave corrigida para 'Nome'
+                            content += '<p><strong>Telefone:</strong> ' + cliente['Telefone'] + '</p>';
+                            content += '</div>';
+                        });
+                        content += '</div></div>';
+                    }
+                    $('#kanban-board').html(content);
+                    configurarDragAndDrop();
+                });
+            }
+
+            $('.funil-list a').click(function() {
+                var funil_name = $(this).data('funil');
+                carregarFunil(funil_name);
+            });
+
+            $(document).on('click', '.cliente', function() {
+                var clienteID = $(this).data('id');
+                $.getJSON('/cliente/' + clienteID, function(data) {
+                    var detalhes = '';
+                    for (var key in data) {
+                        detalhes += '<p><strong>' + key + ':</strong> ' + data[key] + '</p>';
+                    }
+                    $('#detalhes-body').html(detalhes);
+                    $('#clienteModal').modal('show');
+                });
+            });
+
+            function configurarDragAndDrop() {
+                $('.cliente').on('dragstart', function(e) {
+                    $(this).addClass('dragging');
+                });
+
+                $('.cliente').on('dragend', function(e) {
+                    $(this).removeClass('dragging');
+                });
+
+                $('.etapa').on('dragover', function(e) {
+                    e.preventDefault();
+                    $(this).addClass('drag-over');
+                });
+
+                $('.etapa').on('dragleave', function(e) {
+                    $(this).removeClass('drag-over');
+                });
+
+                $('.etapa').on('drop', function(e) {
+                    e.preventDefault();
+                    var clienteID = $('.dragging').data('id');
+                    var novaEtapa = $(this).data('etapa');
+                    $(this).append($('.dragging'));
+                    $(this).removeClass('drag-over');
+
+                    // Enviar atualização para o backend
+                    $.ajax({
+                        url: '/atualizar_etapa',
+                        method: 'POST',
+                        contentType: 'application/json',
+                        data: JSON.stringify({ 'id': clienteID, 'nova_etapa': novaEtapa }),
+                        success: function(response) {
+                            alert('Etapa atualizada com sucesso!');
+                        }
+                    });
+                });
+            }
+        });
+    </script>
+</body>
+</html>
